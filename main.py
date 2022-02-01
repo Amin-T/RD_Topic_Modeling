@@ -4,6 +4,10 @@ Created on Thu Jan  6 09:22:48 2022
 
 @author: u0147656
 """
+# =============================================================================
+# Implement the preprocessing on all files:
+# Python's multiprocessing is used to run the preprocessing function in parallel on batches of html/txt files.
+# =============================================================================
 
 # Import liberaries and functions
 from functools import total_ordering
@@ -16,17 +20,13 @@ from multiprocessing import Pool
 
 from file_preprocess import file_preprocess
 
-# =============================================================================
-# Implement the preprocessing on all files
-# =============================================================================
-
 # Get all raw html/text file paths
 all_files = glob.glob('Data/Risk Factors 10k/*')
 
 
 def multi_file_process(file_chunk):
     """
-    Function to preprocess risk reports in batch.
+    Function to preprocess risk reports in a batch.
 
     Parameters
     ----------
@@ -66,14 +66,14 @@ def multi_file_process(file_chunk):
         
     print(f"\nProcess ended   | {time.ctime()}")
     return RF_df
-    
-processes = 10
 
-batchs = np.array_split(all_files, 2*processes)
+# Determine no. of processors to work simultaniously
+processes = 10
+batches = np.array_split(all_files, 2*processes)
 
 if __name__ == "__main__":
     pool = Pool(processes=processes)
-    output = pool.map(multi_file_process, batchs)
+    output = pool.map(multi_file_process, batches)
     pool.close()
     pool.join()
     
