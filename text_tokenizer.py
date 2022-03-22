@@ -1,20 +1,35 @@
-import numpy as np
+# -*- coding: utf-8 -*-
+"""
+Created on:  Mar 20, 2022
+
+@author: Amin
+"""
+
+# Import liberaries and functions
 import time
 import spacy
 nlp = spacy.load('en_core_web_sm')
 from multiprocessing import Pool
+from tqdm.auto import tqdm
 
 def clean(doc):
     # Identify named entities
-    ents = [ent.lemma_ for ent in doc.ents]
+    ents = [ent.lemma_.lower() for ent in doc.ents]
     # To remove stop words, punctuations, and currency tokens
-    mask = lambda t: not (t.is_stop or t.is_punct or t.is_currency or t.is_space or t.ent_iob_ !='O')
-    tokens = [tok.lemma_ for tok in filter(mask, doc)]
+    mask = lambda t: not (t.is_stop or t.is_punct or t.is_currency or t.is_space)
+    tokens = [tok.lemma_.lower() for tok in filter(mask, doc)]
+
     tokens.extend(ents)
     return tokens
 
+def split_dataframe(df, batch_size = 1000): 
+    chunks = list()
+    num_chunks = len(df) // batch_size + 1
+    for i in range(num_chunks):
+        chunks.append(df[i*batch_size:(i+1)*batch_size])
+    return chunks
 
-def tokenizer(data, n_jobs = 5):
+def tokenizer(data, n_jobs = 8, batch_size = 1000):
     """
     Extract tokens from the spaCy doc object.
 
@@ -30,15 +45,19 @@ def tokenizer(data, n_jobs = 5):
     list of tokens per text segment
 
     """
-    print(f"\nProcess started | {time.ctime()}")
+    print(f"Process started | {time.ctime()}\n")
 
-    # Covert texts to spaCy doc objects
-    docs = nlp.pipe(data.tolist())
+    # Prepare for the parallel computing
+    batches = split_dataframe(data, batch_size)
 
-    if __name__:
+    output = []
+    for batch in tqdm(batches):
+        # Covert texts to spaCy doc objects
+        docs = nlp.pipe(batch.tolist())
         with Pool(processes=n_jobs) as p:
-            output = p.map(clean, docs)
-
+            temp = p.map(clean, docs)
         p.join()
-        print(f"\nProcess ended   | {time.ctime()}")
-        return output
+        output.extend(temp)
+        
+    print(f"Process ended   | {time.ctime()}\n")
+    return output
