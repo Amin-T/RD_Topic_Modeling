@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on:  Mar 20, 2022
+Created on  December 2021
 
 @author: Amin
 """
@@ -16,9 +16,9 @@ def clean(doc):
     # Identify named entities
     ents = [ent.lemma_.lower() for ent in doc.ents]
     # To remove stop words, punctuations, and currency tokens
-    mask = lambda t: not (t.is_stop or t.is_punct or t.is_currency or t.is_space)
+    mask = lambda t: t.is_alpha and not t.is_stop 
+    # mask = lambda t: not (t.is_stop or t.is_punct or t.is_currency or t.is_space or t.ent_iob_ !='O')
     tokens = [tok.lemma_.lower() for tok in filter(mask, doc)]
-
     tokens.extend(ents)
     return tokens
 
