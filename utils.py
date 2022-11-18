@@ -2,6 +2,8 @@ from sklearn.feature_extraction.text import CountVectorizer
 import numpy as np
 from scipy import sparse
 from typing import Tuple, List
+import torch
+from embedded_topic_model.utils import data
 
 
 def _remove_empty_documents(documents):
@@ -246,3 +248,38 @@ def create_etm_datasets(
     return vocabulary, train_dataset, test_dataset, idx_train, idx_test
 
     
+
+
+def get_document_topic_dist(self, tokens, counts) -> torch.Tensor:
+    """
+    Obtains the document-topic distribution matrix.
+    The document-topic distribution matrix lists the probabilities for each topic on each document.
+    This is a normalized distribution matrix, and as such, each row sums to one.
+
+    tokens : tokenized documents obtained using create_etm_datasets
+    counts : word counts per document obtained using create_etm_datasets
+
+    Returns:
+    ===
+        torch.Tensor: topic-word distribution matrix, with DxK dimension, where
+        D is the number of documents in the corpus and K is the number of topics
+    """
+    self.model = self.model.to(self.device)
+    self.model.eval()
+
+    with torch.no_grad():
+        thetas = []
+        ind = torch.tensor(range(len(tokens)))
+        data_batch = data.get_batch(
+            tokens,
+            counts,
+            ind,
+            self.vocabulary_size,
+            self.device)
+        sums = data_batch.sum(1).unsqueeze(1)
+        normalized_data_batch = data_batch / sums if self.bow_norm else data_batch
+        theta, _ = self.model.get_theta(normalized_data_batch)
+
+        thetas.append(theta)
+
+        return torch.cat(tuple(thetas), 0)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on:  Mar 20, 2022
+Created on December 2021
 
 @author: Amin
 """
@@ -10,11 +10,12 @@ from bs4 import BeautifulSoup
 import re
 import spacy
 from spacy.attrs import SENT_START
-import time
+from time import strftime, gmtime
 import pandas as pd
 from tqdm.auto import tqdm
 
 nlp = spacy.load('en_core_web_sm')
+
 
 def file_preprocess(file, format='htm', paragraphs=True):
     """
@@ -41,60 +42,62 @@ def file_preprocess(file, format='htm', paragraphs=True):
         # regex to remove (non-word characters)|(empty strings)|(page numbers)
         regex = re.compile("(\W+)|^(?![\s\S])|(\W*\d+\W*)|(\W*(item)?\W*(1a)?\W*(risk factor[s]?)?\W*)|(\W*table of content[s]?\W*)")
         # get a list of all string items after removing unwanted strings
-        str_list = [re.sub('\s+', ' ', item.strip()) 
-                    for item in list(html.strings) 
-                    if not bool(regex.fullmatch(item.lower()))]
+        str_list = list(filter(
+            lambda x: not bool(regex.fullmatch(x.lower())),
+            (re.sub('\s+', ' ', item.strip()) for item in list(html.strings))
+        ))
         
     # Create a list of paragraphs (seperated by \n\n) in the TXT files
     else:
-        regex = re.compile(b"(\W+)|^(?![\s\S])|(\s*\d+\s*<.*>)|(\W*(item)?\W*(1a)?\W*(risk factor[s]?)?\W*)|(\W*table of content[s]?\W*)")
-        str_list = [re.sub('\s+', ' ', item.decode('utf-8').strip()) 
-                    for item in re.split(b'\n *\n', file) 
-                    if not bool(regex.fullmatch(item.lower()))]
+        regex = re.compile("(\W+)|^(?![\s\S])|(\s*\d+\s*<.*>)|(\W*(item)?\W*(1a)?\W*(risk factor[s]?)?\W*)|(\W*table of content[s]?\W*)")
+        str_list = list(filter(
+            lambda x: not bool(regex.fullmatch(x.lower())),
+            (re.sub('\s+', ' ', item.decode('utf-8').strip()) for item in re.split(b'\n *\n', file))
+        ))
         
-    # Merge text segments
-
-    if paragraphs:
-        # Merging titles to its related content, text which is continued to the next page, and bullet points
-        RF_list = []
-        try:
-            new_rf = str_list[0]
+        
+    # To filter reports that do not disclose any information 
+    # (mainly empty reports or smaller reporting companies)
+    if len(str_list) > 1:
+        # Merge text segments
+        if paragraphs:
+            # Merging titles to its related content, text which is continued to the next page, and bullet points
+            RF_list = []
+            new_rf = "\n"
             # Iterate through the text segments to extract paragraphs and lists
-            for rf in str_list[1:]:
+            for rf in str_list:
                 rf_striped = re.sub(pattern='^\W*', repl='', string=rf)
-                doc = nlp(new_rf)
-                # Identify titles and bullet points
+                doc = nlp(rf_striped)
+                islower = doc[0].is_lower
+                # Identify titles
                 if doc.count_by(SENT_START)[1] <= 1:
-                    # Merge bullet points and lists in text
-                    if rf_striped[0].islower():
-                        new_rf = new_rf + ' ' + rf
-                    else: # Merge title with the following paragraph
-                        new_rf = new_rf + '\n' + rf
-                # Check if text is continued to the next text segment
-                elif rf_striped[0].islower():
-                    new_rf = new_rf + ' ' + rf
+                    if islower:
+                        # add bullet points and lists to the risk factor
+                        new_rf = "\n".join([new_rf, rf])
+                    else: 
+                        if nlp(new_rf).count_by(SENT_START)[1] >1:
+                            RF_list.append(new_rf) # add the previous risk factor to the list
+                            new_rf = rf
+                        else:
+                            new_rf = "\n".join([new_rf, rf])
                 else:
-                    RF_list.append(new_rf)
-                    new_rf = rf
+                    new_rf = "\n".join([new_rf, rf])
+                
             # add the last item in the list        
             RF_list.append(new_rf)
             
             return RF_list
-        
-        except IndexError:
-            return None
-
-    else:
-        # Return the document as a whole
-        try:
+            
+        else:
+            # Return the document as a whole
             RD_doc = ' '.join(str_list)
             return RD_doc
-        
-        except IndexError:
-            return None        
+            
+    else:
+        return None
 
 
-def multi_file_process(file_chunk, rf_split=False):
+def multi_file_process(file_chunk,  rf_split=True):
     """
     Function to preprocess risk reports in a batch.
 
@@ -109,28 +112,30 @@ def multi_file_process(file_chunk, rf_split=False):
         DataFrame with columns 'cik', 'reporting year', 'filing date' and 'Item 1A'.
     """
     
-    print(f"\nProcess started | {time.ctime()}")
+    print(f"\nProcess started | {strftime('%D %H:%M', gmtime())}")
     
     # Create an empty pandas DataFrame
     Item1A_df = pd.DataFrame()
     
-    for file in tqdm(file_chunk):
+    for i, file in tqdm(file_chunk.iterrows()):
         # Read file
-        with open(file, 'rb') as f:
-            f_name = f.name.split('\\')[-1]
-            cik = f_name.split('-')[0]
-            r_year = f_name.split('-')[2][1:5]
-            f_date = f_name.split('-')[1][1:]
-            f_ext = f.name.split('.')[-1]
-            
+        with open(file['path'], 'rb') as f:
             # Convert the textual data into the required format
-            item_1a = file_preprocess(f.read(), format=f_ext, paragraphs=rf_split)
+            item_1a = file_preprocess(f.read(), format=file['extension'], paragraphs=rf_split)
+
+        cik = file['CIK']
 
         if rf_split:
             if item_1a is not None:
                 # Add the file and correspomding data to the list in DataFrame
-                Item1A_df = Item1A_df.append(
-                    pd.DataFrame(data={'cik': cik, 'reporting year': r_year, 'filing date': f_date, 'Item 1A': item_1a})
+                Item1A_df = pd.concat(
+                    [Item1A_df,
+                    pd.DataFrame(data={
+                        'CIK': cik, 
+                        'report_dt': file['report_dt'], 
+                        'filing_dt': file['filing_dt'], 
+                        'Item 1A': item_1a
+                    })]
                 )
             else:
                 pass
@@ -140,10 +145,18 @@ def multi_file_process(file_chunk, rf_split=False):
                 # Add the file and correspomding data to the list in DataFrame
                 Item1A_df = pd.concat(
                     [Item1A_df,
-                    pd.DataFrame(data={'cik': cik, 'reporting year': r_year, 'filing date': f_date, 'Item 1A': [item_1a]})]
+                    pd.DataFrame(data={
+                        'CIK': cik, 
+                        'report_dt': file['report_dt'], 
+                        'filing_dt': file['filing_dt'], 
+                        'Item 1A': [item_1a]
+                    })]
                 )
             else:
                 pass
         
-    print(f"\nProcess ended   | {time.ctime()}")
+    print(f"\nProcess ended   | {strftime('%D %H:%M', gmtime())}")
+
     return Item1A_df
+
+

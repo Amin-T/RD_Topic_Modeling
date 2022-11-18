@@ -1,81 +1,95 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun May 15 11:03:16 2022
+Created on 15 October 2022
 
 @author: Amin
 """
 
-# Import liberaries
-from gensim.models import Word2Vec, Phrases, KeyedVectors
+# Import libraries
 import pandas as pd
+from gensim.models import Word2Vec
+from gensim.models.callbacks import CallbackAny2Vec
+import argparse
 from time import strftime, gmtime
-import sys
-import spacy
-nlp = spacy.load('en_core_web_sm')
+from Data.data import bigram
+import os
 
-sys.stdout = open(f"embeddings_log_{strftime('%d%m%y', gmtime())}.txt", "w")
+"""
+=============================================================================
+Train Word2Vec model.
 
-print(f"START: {strftime('%D %H:%M', gmtime())}\n")
+To run:
+    >>> python train_embeddings.py
+=============================================================================
+"""
+parser = argparse.ArgumentParser(description='Train W2V')
+
+parser.add_argument('--RF_df', type=str, default='Data\W2V_train.csv', help='directory of dataframe containing risk factors')
+parser.add_argument('--W2V_model', type=str, default="Models\W2V_model.model", help='directory to save trained W2V model')
+parser.add_argument('--embedding', type=str, default="Models\embedding.wordvectors", help='directory to save wordvectors')
+
+parser.add_argument('--min_count', type=float, default=0.0001, help='min count of bigrams (ratio of number of RFs)')
+parser.add_argument('--n_jobs', type=int, default=36, help='Number of processors to process texts')
+parser.add_argument('--epochs', type=int, default=10, help='Number of ecpochs to train the model')
+
+args = parser.parse_args()
+
+print(args, "\n")
+
+print(f"{strftime('%D %H:%M', gmtime())} | <<< START >>> \n")
 
 print("Loading data ...\n")
-RF_df = pd.read_csv("RF_df.csv", index_col=0)
+# Loading data
+rf_df = pd.read_csv(args.RF_df, index_col=0).dropna()
+# Create a list of lowercase strings as training data
+train_docs = rf_df['cleaned_txt'].tolist()
 
-word_cnt = RF_df['Item 1A'].astype('str').map(lambda x: len(x.split()))
-Qup = word_cnt.quantile(q=0.9)
-Qlow = word_cnt.quantile(q=0.1)
 
-print(f"Documents with less than {Qlow} and more than {Qup}, and annual reports of before 2006 are dropped.")
-filtered_rf_df = RF_df[(word_cnt>Qlow) & (word_cnt<Qup) & (RF_df["reporting year"]>2005)]
+def token(text):
+    return text.split(" ")
 
-train_docs = filtered_rf_df['Item 1A'].str.lower().tolist()
-
-del RF_df
-del filtered_rf_df
-
-def clean(doc):
-    # To remove stop words, punctuations, numbers, etc. and lowercase
-    mask = lambda t: (t.is_alpha or t.pos==96) and not t.is_stop 
-    tokens = (tok.text for tok in filter(mask, doc))
-    return tokens
-
-# Memory friendly iterator
-class MyCorpus:
-    """An iterator that yields sentences (lists of str)."""
-    def __iter__(self):
-        corpus = nlp.pipe(train_docs)
-        for doc in corpus:
-            yield clean(doc=doc)
-
-sentences = MyCorpus()
-
-print(f"{strftime('%D %H:%M', gmtime())} | Detecting bigrams in the corpus using a memory friendly iterator ...\n")
-# Train a bigram detector.
-bigram_transformer = Phrases(sentences, min_count=0.0005*len(train_docs))
-
-# Apply the trained MWE detector to the corpus
-transformed_sents = bigram_transformer[sentences]
+transformed_sents = bigram(
+    raw_data = train_docs, 
+    tokenizer=token,
+    min_cnt = 0.0001 
+)
 
 print(f"{strftime('%D %H:%M', gmtime())} | Training word2vec embeddings ...\n")
 
+class callback(CallbackAny2Vec):
+    '''Callback to print loss after each epoch.'''
+
+    def __init__(self):
+        self.epoch = 0
+
+    def on_epoch_end(self, model):
+        if self.epoch % 5 == 0:
+            model.save(f"Models\W2V_model_{self.epoch}.model")
+          
+        loss = model.get_latest_training_loss()
+        print(f'Loss after epoch {self.epoch}: {loss}')
+        self.epoch += 1
+
+
 model = Word2Vec(
     transformed_sents, 
-    min_count=1, 
-    epochs=10, 
-    workers=15,
+    window=5,
+    min_count=5, 
+    epochs=args.epochs, 
+    workers=args.n_jobs,
     vector_size=300,
     sg=1,
     negative=10,
-    comment=1
+    compute_loss=True, 
+    callbacks=[callback()],
     )
 
 print("Saving Word2Vec model and trained embeddings ...\n")
-model.save("W2V_model.model")
+model.save(args.W2V_model)
+
 # Store just the words + their trained embeddings.
 word_vectors = model.wv
-word_vectors.save("embeddings.wordvectors")
+word_vectors.save(args.embedding)
 
-print(f"END: {strftime('%D %H:%M', gmtime())}\n")
-
-sys.stdout.close()
-
+print(f"{strftime('%D %H:%M', gmtime())} | >>> END <<< \n")
 
