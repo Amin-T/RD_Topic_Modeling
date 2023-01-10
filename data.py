@@ -11,7 +11,7 @@ from time import gmtime, strftime
 from gensim.models import Phrases, phrases
 
 
-def load_data(path, low_bnd=0.1, up_bnd=1.0):
+def load_data(path, low_bnd=0.1, up_bnd=1.0, col="Itam 1A", index=None):
     """
     Load the Risk Factors .csv file and apply filters on:
         > low_bound: min length of the doc in column "Itam 1A"
@@ -20,9 +20,9 @@ def load_data(path, low_bnd=0.1, up_bnd=1.0):
 
     print("Loading data ...\n")
 
-    RF_df = pd.read_csv(filepath_or_buffer=path, index_col=0)
+    RF_df = pd.read_csv(filepath_or_buffer=path, index_col=index).dropna()
 
-    word_cnt = RF_df['Item 1A'].astype('str').map(lambda x: len(x.split()))
+    word_cnt = RF_df[col].astype('str').map(lambda x: len(x.split()))
     Qup = int(word_cnt.quantile(q=up_bnd))
     Qlow = int(word_cnt.quantile(q=low_bnd)
 )
@@ -31,13 +31,16 @@ def load_data(path, low_bnd=0.1, up_bnd=1.0):
 
     return filtered_rf_df
 
-def nlp_clean(doc):
+def nlp_clean(doc, lemma=False):
     # To remove stop words, punctuations, numbers, etc.
-    mask = lambda t: (t.is_alpha or t.pos==96) and not t.is_stop 
-    tokens = (tok.text for tok in filter(mask, doc))
+    mask = lambda t: (t.is_alpha or t.pos==96) and not t.is_stop and t.shape_.lower()!='x'
+    if lemma:
+        tokens = (tok.lemma_.lower() for tok in filter(mask, doc))
+    else:
+        tokens = (tok.text.lower() for tok in filter(mask, doc))
     return tokens
 
-def bigram(raw_data, tokenizer, min_cnt=0.0001):
+def bigram(raw_data, tokenizer, min_cnt=0.001):
     """
     Transform texts to bigrams:
         > raw_data: list of "Itam 1A" column

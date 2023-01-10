@@ -22,10 +22,10 @@ Clean and transform Risk Report files into a DataFrame of risk factors.
 
 To run:
     with splitting reports to risk factors:
-    >>> python RFs_prep.py --njobs 8
+    >>> python RFs_prep.py --njobs 10
 
     without splitting:
-    >>> python LDA\RFs_prep.py --njobs 10 --tokens Item1A_tokens.txt --dictionary Item1A_lda_dict --RF_df Item1A_df.csv --Qlow 0.1
+    >>> python RFs_prep.py --njobs 10 --tokens Item1A_tokens.txt --dictionary Item1A_lda_dict --RF_df Item1A_df.csv --Qlow 0.1
 
 =============================================================================
 """
@@ -33,8 +33,8 @@ To run:
 parser = argparse.ArgumentParser(description='RFs prepration')
 
 ### data and file related arguments
-parser.add_argument('--files', type=str, default='Data/files.csv', help='folder containing list of risk reports')
-parser.add_argument('--RF_df', type=str, default='RF_df.csv', help='directory to save dataframe containing risk factors')
+parser.add_argument('--files', type=str, default='Data/all_files.csv', help='folder containing list of risk reports')
+parser.add_argument('--RF_df', type=str, default='RFs_all.csv', help='directory to save dataframe containing risk factors')
 parser.add_argument('--rf_split', type=int, choices=[0,1], default=1, help='preprocess with (1) or without (0) splitting risk factors')
 
 ### parameters

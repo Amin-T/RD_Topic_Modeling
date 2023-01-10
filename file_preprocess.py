@@ -34,9 +34,7 @@ def file_preprocess(file, format='htm', paragraphs=True):
     
     """
     
-    # Split the text
-    # Create a list of string elements in the HTML files
-    if format in ['htm', 'html']:
+    def parse_alter():
         # parse html data
         html = BeautifulSoup(file, 'html.parser')
         # regex to remove (non-word characters)|(empty strings)|(page numbers)
@@ -46,21 +44,9 @@ def file_preprocess(file, format='htm', paragraphs=True):
             lambda x: not bool(regex.fullmatch(x.lower())),
             (re.sub('\s+', ' ', item.strip()) for item in list(html.strings))
         ))
-        
-    # Create a list of paragraphs (seperated by \n\n) in the TXT files
-    else:
-        regex = re.compile("(\W+)|^(?![\s\S])|(\s*\d+\s*<.*>)|(\W*(item)?\W*(1a)?\W*(risk factor[s]?)?\W*)|(\W*table of content[s]?\W*)")
-        str_list = list(filter(
-            lambda x: not bool(regex.fullmatch(x.lower())),
-            (re.sub('\s+', ' ', item.decode('utf-8').strip()) for item in re.split(b'\n *\n', file))
-        ))
-        
-        
-    # To filter reports that do not disclose any information 
-    # (mainly empty reports or smaller reporting companies)
-    if len(str_list) > 1:
-        # Merge text segments
-        if paragraphs:
+
+        if len(str_list) > 2:
+            # Merge text segments
             # Merging titles to its related content, text which is continued to the next page, and bullet points
             RF_list = []
             new_rf = "\n"
@@ -85,16 +71,118 @@ def file_preprocess(file, format='htm', paragraphs=True):
                 
             # add the last item in the list        
             RF_list.append(new_rf)
-            
             return RF_list
-            
+
         else:
-            # Return the document as a whole
-            RD_doc = ' '.join(str_list)
-            return RD_doc
+            return None
+
+    if paragraphs:
+
+        # Split file into subsections
+        if format in ['htm', 'html']:
+            # Read file as raw test
+            html_text = file
+
+            # Pattern to capture the subsections in HTML files
+            pattern = re.compile(
+                b"(<b[\W]+)|(<strong>)|(<i>)|(<u>)|(<(font|p|div)\W+(?:\w+\W+){0,25}font-weight\W*(700|bold))|(<(p|div)\W+(?:\w+\W+){0,50}font-style\W*italic)"
+            )
+            matches = [m.start() for m in pattern.finditer(html_text.lower())]
+            matches.append(len(html_text))
+
+            # regex to remove (non-word characters)|(empty strings)|(page numbers)
+            regex = re.compile("(\W+)|^(?![\s\S])|(\W*\d+\W*)|(\W*(item)?\W*(1a)?\W*(risk\s+factor[s]?)?\W*)|(\W*table\s+of\s+content[s]?\W*)")
+
+            # get a list of all subsections after removing unwanted strings
+            str_list = list(filter(
+                lambda x: not bool(regex.fullmatch(x.lower())),
+                (
+                    BeautifulSoup(html_text[matches[i]: matches[i+1]], 'html.parser').text.strip() 
+                    for i in range(len(matches)-1)
+                )
+            ))
+
+            if len(str_list) > 1:
+                # Merging string that are incorrectely seperated
+                RF_list = []
+                new_rf = str_list[0]
+                # Iterate through the text segments to extract paragraphs and lists
+                for rf in str_list[1:]:
+                    rf_striped = re.sub(pattern='^\W*', repl='', string=rf)
+                    doc = nlp(rf_striped)
+                    islower = doc[0].is_lower
+                    
+                    if islower:
+                        new_rf = " ".join([new_rf, rf])
+                    else:
+                        RF_list.append(new_rf) # add the previous risk factor to the list
+                        new_rf = rf
+                    
+                # add the last item in the list        
+                RF_list.append(new_rf)
+                
+                if len(RF_list) > 1:
+                    return RF_list
+                else:
+                    return parse_alter()
+
+            else:
+                return parse_alter()
+
+
+        # Create a list of paragraphs (seperated by \n\n) in the TXT files
+        else:
+            regex = re.compile("(\W+)|^(?![\s\S])|(\s*\d+\s*<.*>)|(\W*(item)?\W*(1a)?\W*(risk factor[s]?)?\W*)|(\W*table of content[s]?\W*)")
+            str_list = list(filter(
+                lambda x: not bool(regex.fullmatch(x.lower())),
+                (
+                    re.sub('\s+', ' ', item.decode('utf-8').strip()) 
+                    for item in re.split(b'\n *\n', file)
+                )
+            ))
             
+            # To filter reports that do not disclose any information 
+            # (mainly empty reports or smaller reporting companies)
+            if len(str_list) > 1:
+                # Merge text segments
+                # Merging titles to its related content, text which is continued to the next page, and bullet points
+                RF_list = []
+                new_rf = "\n"
+                # Iterate through the text segments to extract paragraphs and lists
+                for rf in str_list:
+                    rf_striped = re.sub(pattern='^\W*', repl='', string=rf)
+                    doc = nlp(rf_striped)
+                    islower = doc[0].is_lower
+                    # Identify titles
+                    if doc.count_by(SENT_START)[1] <= 1:
+                        if islower:
+                            # add bullet points and lists to the risk factor
+                            new_rf = "\n".join([new_rf, rf])
+                        else: 
+                            if nlp(new_rf).count_by(SENT_START)[1] >1:
+                                RF_list.append(new_rf) # add the previous risk factor to the list
+                                new_rf = rf
+                            else:
+                                new_rf = "\n".join([new_rf, rf])
+                    else:
+                        new_rf = "\n".join([new_rf, rf])
+                    
+                # add the last item in the list        
+                RF_list.append(new_rf)
+                
+                return RF_list
+            
+            else:
+                return None
+
     else:
-        return None
+        # Return the document as a whole
+        if format in ['htm', 'html']:
+            # Read file as raw test
+            return BeautifulSoup(file, 'html.parser').text
+        else:
+            return file
+            
 
 
 def multi_file_process(file_chunk,  rf_split=True):

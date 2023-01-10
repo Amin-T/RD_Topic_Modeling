@@ -18,9 +18,10 @@ from utils import create_etm_datasets
 from gensim.models.coherencemodel import CoherenceModel
 from gensim.corpora import Dictionary
 from octis.evaluation_metrics.diversity_metrics import InvertedRBO
-import matplotlib.pyplot as plt
-plt.style.use('seaborn')
-plt.rc('figure', autolayout=True)
+
+# import matplotlib.pyplot as plt
+# plt.style.use('seaborn')
+# plt.rc('figure', autolayout=True)
 
 """
 =============================================================================
@@ -32,11 +33,12 @@ Training is done in 2 stapes:
         using a smaller step size and training the ETM models on the dataset.
 
 To run:
->>> python ETM_opt.py --n_start 10 --n_limit 50 --n_step 10 --train_size 0.8 --epochs 10 --batch_size 2000
+>>> python ETM_opt.py --documents Data/clean_docs_2.csv --embeddings Models/embedding_2.wordvectors
 =============================================================================
 """
 
 parser = argparse.ArgumentParser(description='ETM model trainer')
+
 
 ### data and file related arguments
 parser.add_argument('--documents', type=str, default='Data/clean_docs.csv', help='path to cleaned documents')
@@ -45,17 +47,17 @@ parser.add_argument('--save_model', type=str, default='Models/ETM_model', help='
 
 ### arguments related to data
 parser.add_argument('--min_df', type=float, default=100, help='Minimum document-frequency for terms. Removes terms with a frequency below this threshold')
-parser.add_argument('--max_df', type=float, default=0.95, help='Maximum document-frequency for terms. Removes terms with a frequency above this threshold')
+parser.add_argument('--max_df', type=float, default=0.99, help='Maximum document-frequency for terms. Removes terms with a frequency above this threshold')
 parser.add_argument('--train_size', type=float, default=0.8, help='fraction of the original corpus to be used for the train dataset')
 
 ### arguments related to model and training
-parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train')
-parser.add_argument('--batch_size', type=int, default=5000, help='input batch size for training')
+parser.add_argument('--epochs', type=int, default=40, help='number of epochs to train')
+parser.add_argument('--batch_size', type=int, default=2000, help='input batch size for training')
 parser.add_argument('--perplexity', type=int, default=1, help='whether to compute perplexity on document completion task')
 parser.add_argument('--n_start', type=int, default=10, help='min number of topics to be trained')
-parser.add_argument('--n_limit', type=int, default=250, help='max number of topics to be trained')
+parser.add_argument('--n_limit', type=int, default=310, help='max number of topics to be trained')
 parser.add_argument('--n_step', type=int, default=20, help='step for number of topics')
-parser.add_argument('--topn', type=int, default=10, help='the number of top words to be extracted from each topic')
+parser.add_argument('--topn', type=int, default=15, help='the number of top words to be extracted from each topic')
 
 args = parser.parse_args()
 
@@ -78,7 +80,7 @@ vocabulary, train_dataset, test_dataset, idx_train, idx_test = create_etm_datase
     train_size=args.train_size
 )
 
-with open(f"ETM_idx_train_{strftime('%d%m%y', date)}.pkl", 'wb') as f:
+with open(f"ETM_opt_idx_{strftime('%d%m%y', date)}.pkl", 'wb') as f:
     pickle.dump(idx_train, f)
 
 if args.train_size >= 1:
@@ -173,14 +175,31 @@ def model_optimizer(vocab, embs, train_data, limit, start, step, test_data=None)
 
     return metrics, best_model
 
-print(f"{strftime('%D %H:%M', gmtime())} | Training ETM models started ...\n")
+print(f"{strftime('%D %H:%M', gmtime())} | Training ETM models started.\n")
 sys.stdout.flush()
+
+print(f"{strftime('%D %H:%M', gmtime())} | Training results in step 1 ...\n")
+scores_1, etm_model_1 = model_optimizer(
+    vocab=vocabulary, 
+    embs=wv, 
+    train_data=train_dataset, 
+    limit=args.n_limit+1, start=args.n_start, step=args.n_step, 
+    test_data=test_dataset
+)
+
+# Identifying the best model based on topic quality
+num_topics_1 = max(scores_1, key=lambda n: scores_1[n][2])
+print(f" --> Best number of topics in step 1: {num_topics_1}\n")
+
+del etm_model_1
+
+print(f"{strftime('%D %H:%M', gmtime())} | Training results in step 2 ...\n")
 
 scores, etm_model = model_optimizer(
     vocab=vocabulary, 
     embs=wv, 
     train_data=train_dataset, 
-    limit=args.n_limit+1, start=args.n_start, step=args.n_step, 
+    limit=num_topics_1+args.n_step+1, start=num_topics_1-args.n_step, step=5, 
     test_data=test_dataset
 )
 
@@ -194,22 +213,25 @@ print(f"{strftime('%D %H:%M', gmtime())} | Saving best ETM model ...\n")
 with open(f"{args.save_model}_{strftime('%d%m%y', date)}.pkl", "wb") as f:
     pickle.dump(etm_model, f)
 
+# Saving quality scores
+all_scores = pd.concat([pd.DataFrame(scores_1), pd.DataFrame(scores)], axis=1)
+all_scores.to_excel(f"ETM_opt_scores_{strftime('%d%m%y', date)}.xlsx")
+
 print(f"{strftime('%D %H:%M', gmtime())} | >>> END <<< \n")
 
 sys.stdout.close()
 
-num_topics = scores.keys()
-TS = scores.values()
-Coherence = [x[0] for x in TS]
-inv_Perplexity = [1/x[1] for x in TS]
-Quality = [x[2] for x in TS]
+# num_topics = scores.keys()
+# TS = scores.values()
+# Coherence = [x[0] for x in TS]
+# inv_Perplexity = [1/x[1] for x in TS]
+# Quality = [x[2] for x in TS]
 
-fig, ax = plt.subplots(figsize=(12,8))
-ax.plot(num_topics, Coherence, label="Coherence")
-ax.plot(num_topics, inv_Perplexity, ls='-.', label="inv_Perplexity")
-ax.plot(num_topics, Quality, ls='--', label="Quality")
-plt.xlabel("Num Topics")
-ax.legend(loc='best')
-ax.grid(alpha=1)
-plt.savefig(f"ETM_models_{strftime('%d%m%y', date)}.png")
-
+# fig, ax = plt.subplots(figsize=(12,8))
+# ax.plot(num_topics, Coherence, label="Coherence")
+# ax.plot(num_topics, inv_Perplexity, ls='-.', label="inv_Perplexity")
+# ax.plot(num_topics, Quality, ls='--', label="Quality")
+# plt.xlabel("Num Topics")
+# ax.legend(loc='best')
+# ax.grid(alpha=1)
+# plt.savefig(f"ETM_models_{strftime('%d%m%y', date)}.png")
