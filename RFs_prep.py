@@ -6,7 +6,6 @@ Created on 8 February 2022
 """
 
 # Import liberaries and functions
-from multiprocessing.dummy import freeze_support
 import pandas as pd
 import numpy as np
 from file_preprocess import multi_file_process
@@ -25,7 +24,7 @@ To run:
     >>> python RFs_prep.py --njobs 10
 
     without splitting:
-    >>> python RFs_prep.py --njobs 10 --tokens Item1A_tokens.txt --dictionary Item1A_lda_dict --RF_df Item1A_df.csv --Qlow 0.1
+    >>> python RFs_prep.py --rf_split 0 --njobs 10 --RF_df Item1A_df.csv
 
 =============================================================================
 """
@@ -42,7 +41,7 @@ parser.add_argument('--njobs', type=int, default=4, help='number of cpu cores to
 
 args = parser.parse_args()
 
-sys.stdout = open(f"RFs_prep_log_{strftime('%d%m%y', gmtime())}.txt", "w")
+# sys.stdout = open(f"RFs_prep_log_{strftime('%d%m%y', gmtime())}.txt", "w")
 print(args, "\n")
 
 print(f"{strftime('%D %H:%M', gmtime())} | <<< START >>> \n")
@@ -81,5 +80,5 @@ if __name__ == "__main__":
     print(f"{strftime('%D %H:%M', gmtime())} | Saving processed docs as CSV file ...")
     RF_df.to_csv(args.RF_df)
 
-    sys.stdout.close()
+    # sys.stdout.close()
 

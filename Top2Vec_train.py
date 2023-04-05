@@ -27,7 +27,7 @@ parser.add_argument('--documents', type=str, default='Data/clean_docs_3.csv', he
 parser.add_argument('--save_model', type=str, default='Models/T2V_model_3', help='directory to save tranied model')
 
 ### model and optimization related arguments
-parser.add_argument('--speed', type=str, default='deep-learn', help='determines how fast the model trains (fast-learn, deep-learn)')
+parser.add_argument('--speed', type=str, default='deep-learn', help='determines how fast the model trains (fast-learn, learn, deep-learn)')
 parser.add_argument('--njobs', type=int, default=-1, help='number of cpu cores to be used for training')
 parser.add_argument('--batch_size', type=int, default=1000, help='input batch size for training')
 
@@ -77,12 +77,12 @@ top2vec_model = Top2Vec(
     workers=njobs, 
     document_ids=new_ind.to_list(), 
     tokenizer=tokenizer,
-    hdbscan_args = {
-        'min_cluster_size': 20,
-        'metric': 'euclidean',
-        'cluster_selection_method': 'eom',
-        'cluster_selection_epsilon' : 0.6
-    }
+    # hdbscan_args = {
+    #     'min_cluster_size': 20,
+    #     'metric': 'euclidean',
+    #     'cluster_selection_method': 'eom',
+    #     'cluster_selection_epsilon' : 0.6
+    # }
 )
 
 print(f"{strftime('%D %H:%M', gmtime())} | Saving trained Top2Vec model to disk ...\n")
