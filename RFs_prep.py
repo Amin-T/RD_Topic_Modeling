@@ -21,7 +21,7 @@ Clean and transform Risk Report files into a DataFrame of risk factors.
 
 To run:
     with splitting reports to risk factors:
-    >>> python RFs_prep.py --njobs 10
+    >>> python RFs_prep.py --njobs 16
 
     without splitting:
     >>> python RFs_prep.py --rf_split 0 --njobs 10 --RF_df Item1A_df.csv
@@ -32,8 +32,8 @@ To run:
 parser = argparse.ArgumentParser(description='RFs prepration')
 
 ### data and file related arguments
-parser.add_argument('--files', type=str, default='Data/all_files.csv', help='folder containing list of risk reports')
-parser.add_argument('--RF_df', type=str, default='RFs_all.csv', help='directory to save dataframe containing risk factors')
+parser.add_argument('--files', type=str, default='Data/All_1Afiles.csv', help='folder containing list of risk reports')
+parser.add_argument('--RF_df', type=str, default='Data/RFs_all2.csv', help='directory to save dataframe containing risk factors')
 parser.add_argument('--rf_split', type=int, choices=[0,1], default=1, help='preprocess with (1) or without (0) splitting risk factors')
 
 ### parameters
@@ -58,27 +58,27 @@ print(f"{strftime('%D %H:%M', gmtime())} | Start reading HTML/TXT files ...")
 # Import list of all raw html/text files
 all_files = pd.read_csv(args.files)
 
+all_files = all_files[all_files['formType']!='10-KA']
+
 n_jobs = args.njobs
 batchs = np.array_split(all_files, 2*n_jobs)
     
-if __name__ == "__main__":
-    with Pool(processes=n_jobs) as p:
-        output = p.map(partial(multi_file_process, rf_split=rfsplit), batchs)
-    p.join()
 
-    RF_df = pd.concat(output)
+with Pool(processes=n_jobs) as p:
+    output = p.map(partial(multi_file_process, rf_split=rfsplit), batchs)
+p.join()
 
-    # Remove empty reports
-    RF_df.dropna(inplace=True)
+RF_df = pd.concat(output).reset_index()
 
-    # Remove duplicates
-    RF_df = (
-        RF_df.sort_values(by=['CIK', 'report_dt', 'filing_dt']).drop_duplicates()
-    )
+# Remove empty reports
+RF_df.dropna(subset=['CIK', 'Item 1A'], inplace=True)
 
-    # Save the clean DataFrame
-    print(f"{strftime('%D %H:%M', gmtime())} | Saving processed docs as CSV file ...")
-    RF_df.to_csv(args.RF_df)
+# Remove duplicates
+RF_df.sort_values(by=['CIK', 'report_dt', 'filing_dt'], inplace=True)
 
-    # sys.stdout.close()
+# Save the clean DataFrame
+print(f"{strftime('%D %H:%M', gmtime())} | Saving processed docs as CSV file ...")
+RF_df.to_csv(args.RF_df, index=False)
+
+# sys.stdout.close()
 

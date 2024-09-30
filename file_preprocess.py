@@ -13,6 +13,7 @@ from spacy.attrs import SENT_START
 from time import strftime, gmtime
 import pandas as pd
 from tqdm.auto import tqdm
+import os
 
 nlp = spacy.load('en_core_web_sm')
 
@@ -38,10 +39,10 @@ def file_preprocess(file, format='htm', paragraphs=True):
         # parse html data
         html = BeautifulSoup(file, 'html.parser')
         # regex to remove (non-word characters)|(empty strings)|(page numbers)
-        regex = re.compile("(\W+)|^(?![\s\S])|(\W*\d+\W*)|(\W*(item)?\W*(1a)?\W*(risk factor[s]?)?\W*)|(\W*table of content[s]?\W*)")
+        regex = re.compile(r"^(?![\s\S])|(\W*(page)?\s*\d+\W*)|(\W*(item)?\W*(1a)?\W*(risk\s+factors?)?\W*)|(\W*table\s+of\s+contents?\W*)", re.IGNORECASE)
         # get a list of all string items after removing unwanted strings
         str_list = list(filter(
-            lambda x: not bool(regex.fullmatch(x.lower())),
+            lambda x: not bool(regex.fullmatch(x)),
             (re.sub('\s+', ' ', item.strip()) for item in list(html.strings))
         ))
 
@@ -83,25 +84,55 @@ def file_preprocess(file, format='htm', paragraphs=True):
             # Read file as raw test
             html_text = file
 
+            regex = re.compile(r"""
+                    (\W*(page)?\s*\d+\W*)|^(?![\s\S])| # Empty string
+                    (\W*table\s+of\s+contents?\W*)|(\W+)| 
+                    (\W*(item)?\W*1a\W*)|(\W*(1a)?\W*risk\s+factors?\W*)
+            """, re.IGNORECASE | re.VERBOSE)
+            soup = BeautifulSoup(html_text, 'html.parser')
+
+            # Find all elements that contain text matching the regex pattern
+            elements_to_remove = soup.find_all(string=regex.fullmatch)
+            # Remove the elements containing the matching text
+            for element in elements_to_remove:
+                # Remove the parent element of the text containing the matching text
+                try:
+                    parent = element.find_parent()
+                    if parent and re.fullmatch(element, parent.get_text()):
+                        parent.decompose()
+                except:
+                    continue
+            html_text = str(soup)
+
             # Pattern to capture the subsections in HTML files
             pattern = re.compile(
-                b"(<b[\W]+)|(<strong>)|(<i>)|(<u>)|(<(font|p|div)\W+(?:\w+\W+){0,25}font-weight\W*(700|bold))|(<(p|div)\W+(?:\w+\W+){0,50}font-style\W*italic)"
-            )
-            matches = [m.start() for m in pattern.finditer(html_text.lower())]
-            matches.append(len(html_text))
+                r"""(<(b|strong|i|em|u)(?:\s[^>]*)?>(.*?)</\2>)|
+                (<(font|p|div|span)\b[^>]*?(?:font-weight\s*:\s*(700|bold)|font-style\s*:\s*italic)[^>]*?>.*?</\5>)""",
+                re.IGNORECASE | re.DOTALL | re.VERBOSE)
+            matches = [m.span() for m in pattern.finditer(html_text)]
+
+            # To handle titles and headers that are devided into multiple bold or italic elements
+            refined_matches = []
+            if matches:
+                refined_matches.append(matches[0][0])
+                for i, m in enumerate(matches[1:]):
+                    if m[0] - matches[i][1] > 2:
+                        refined_matches.append(m[0])
+
+                refined_matches.append(len(html_text))
 
             # regex to remove (non-word characters)|(empty strings)|(page numbers)
-            regex = re.compile("(\W+)|^(?![\s\S])|(\W*\d+\W*)|(\W*(item)?\W*(1a)?\W*(risk\s+factor[s]?)?\W*)|(\W*table\s+of\s+content[s]?\W*)")
+            regex = re.compile("\W*(item)?\W*(1a)?\W*(risk\s+factors?)?\W*", re.IGNORECASE)
 
             # get a list of all subsections after removing unwanted strings
             str_list = list(filter(
-                lambda x: not bool(regex.fullmatch(x.lower())),
-                (
-                    BeautifulSoup(html_text[matches[i]: matches[i+1]], 'html.parser').text.strip() 
-                    for i in range(len(matches)-1)
-                )
-            ))
-
+                lambda x: not bool(regex.fullmatch(x)),
+                    (
+                    BeautifulSoup(html_text[refined_matches[i]: refined_matches[i+1]], 'html.parser').text.strip() 
+                    for i in range(len(refined_matches)-1)
+                    )
+                ))
+            
             if len(str_list) > 1:
                 # Merging string that are incorrectely seperated
                 RF_list = []
@@ -132,9 +163,9 @@ def file_preprocess(file, format='htm', paragraphs=True):
 
         # Create a list of paragraphs (seperated by \n\n) in the TXT files
         else:
-            regex = re.compile("(\W+)|^(?![\s\S])|(\s*\d+\s*<.*>)|(\W*(item)?\W*(1a)?\W*(risk factor[s]?)?\W*)|(\W*table of content[s]?\W*)")
+            regex = re.compile(r"^(?![\s\S])|(\W*(page)?\s*\d+\W*)|(\W*(item)?\W*(1a)?\W*(risk\s+factors?)?\W*)|(\W*table\s+of\s+contents?\W*)", re.IGNORECASE)
             str_list = list(filter(
-                lambda x: not bool(regex.fullmatch(x.lower())),
+                lambda x: not bool(regex.fullmatch(x)),
                 (
                     re.sub('\s+', ' ', item.decode('utf-8').strip()) 
                     for item in re.split(b'\n *\n', file)
@@ -179,9 +210,9 @@ def file_preprocess(file, format='htm', paragraphs=True):
         # Return the document as a whole
         if format in ['htm', 'html']:
             # Read file as raw test
-            return BeautifulSoup(file, 'html.parser').text
+            return [BeautifulSoup(file, 'html.parser').text]
         else:
-            return file
+            return [file]
             
 
 
@@ -203,46 +234,36 @@ def multi_file_process(file_chunk,  rf_split=True):
     print(f"\nProcess started | {strftime('%D %H:%M', gmtime())}")
     
     # Create an empty pandas DataFrame
-    Item1A_df = pd.DataFrame()
+    Item1A_list = []
     
     for i, file in tqdm(file_chunk.iterrows()):
-        # Read file
-        with open(file['path'], 'rb') as f:
-            # Convert the textual data into the required format
-            item_1a = file_preprocess(f.read(), format=file['extension'], paragraphs=rf_split)
+        # check file size for empty files
+        if os.path.getsize(file['path']) > 10:
+            # Read file
+            with open(file['path'], 'rb') as f:
+                # Convert the textual data into the required format
+                item_1a = file_preprocess(f.read(), format=file['extension'], paragraphs=rf_split)
 
-        cik = file['CIK']
-
-        if rf_split:
-            if item_1a is not None:
+            if item_1a:
                 # Add the file and correspomding data to the list in DataFrame
-                Item1A_df = pd.concat(
-                    [Item1A_df,
+                Item1A_list.append(
                     pd.DataFrame(data={
-                        'CIK': cik, 
+                        'CIK': file['CIK'], 
                         'report_dt': file['report_dt'], 
                         'filing_dt': file['filing_dt'], 
+                        'ticker': file['ticker'], 
+                        'formType': file['formType'], 
+                        'filerCIK': file['filerCIK'], 
                         'Item 1A': item_1a
-                    })]
+                    })
                 )
             else:
                 pass
-
         else:
-            if item_1a is not None:
-                # Add the file and correspomding data to the list in DataFrame
-                Item1A_df = pd.concat(
-                    [Item1A_df,
-                    pd.DataFrame(data={
-                        'CIK': cik, 
-                        'report_dt': file['report_dt'], 
-                        'filing_dt': file['filing_dt'], 
-                        'Item 1A': [item_1a]
-                    })]
-                )
-            else:
-                pass
-        
+            pass
+    
+    Item1A_df = pd.concat(Item1A_list)
+
     print(f"\nProcess ended   | {strftime('%D %H:%M', gmtime())}")
 
     return Item1A_df
