@@ -1,5 +1,3 @@
-# Informativeness of Textual Risk Disclosures
-
 This repository contains Python and Stata codes used in my PhD research project **"Essays on the Determinants and Consequences of Corporate Risk Disclosures"**. Using topic modeling and other textual analysis techniques, in this PhD project, I explore the determinants, dissemination, and consequences of corporate risk disclosures among publicly listed firms. Understanding the mechanisms that shape the differences in the content, quality, and informativeness of these disclosures across firms and over time, and their implications for market participants is crucial for advancing both theory and policy in financial reporting and disclosure research. 
 
 The full dissertation is available at this [link](https://kuleuven.limo.libis.be/discovery/search?query=any,contains,LIRIAS4262431&tab=LIRIAS&search_scope=lirias_profile&vid=32KUL_KUL:Lirias&offset=0).
