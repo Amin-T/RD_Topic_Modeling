@@ -5,7 +5,7 @@ set more off
 cd "C:\Users\u0147656\Desktop\PyCodes"
 
 * Load data
-import delimited "Data\study1_data2_V4.csv", case(preserve) // BASpreaad with CLOSEPRICE
+import delimited "Data\study1_data2_V5.csv", case(preserve) 
 
 /* Form 10-K is due within 60 days for Large Accelerated filers, within 75 days for Accelerated Filers, and within 90 days for Non-Accelerated Filers after the end of the fiscal year. An NT-10K may be filed up to 24 hours after the 10-K due date to recieve a 15-day extension on Form 10-K. */
 gen LateFiler = 0
@@ -26,8 +26,7 @@ replace mkvalt = mkvalt/1000
 
 replace SHRTURN = SHRTURN*100
 
-replace RF_length = D_length if RF_length==0
-replace RF_length = RF_length /1000
+gen D_length = rf_length - rf_length_1 
 
 replace ActEst = ActEst /EarningsPerShareActual
 replace ActEst_before = ActEst_before /EarningsPerShareActual
@@ -57,7 +56,7 @@ drop if min_disc>=2
 
 
 * Drop missing variables
-drop if missing(SHRTURN, ROE, DtA, current, INTtA, BtM, NUMBEROFANALYSTS, Beta_120, firms, LateFiler, IndVol_, RDxopr, D_length, FREEFLOAT, DVolatility, DSpread, RF_length, Volatility_120, Spread_120)
+drop if missing(SHRTURN, ROE, DtA, Current, INTtA, BtM, NUMBEROFANALYSTS, Beta_126, firms, LateFiler, IndVol_, RDxopr, D_length, DVolatility, rf_length, Volatility_120)
 
 replace COUNT_WEAK=0 if missing(COUNT_WEAK)
 replace Big4=0 if missing(Big4)
@@ -70,10 +69,10 @@ by CIK, sort: egen long cnt_obs = sum(nvals)
 drop if cnt_obs < 2
 
 * Rename variables 
-rename (RF_length Volatility_120 Spread_120 Beta_120 IndVol_ SHRTURN current INTtA NUMBEROFANALYSTS firms RDxopr CategoryPercentOfTradedShares ) (RFLength Volatility Spread Beta IndVolatility ShrTurn Current Intangibles Analysts Firms RD Ownership)
+rename (rf_length Volatility_120 Spread_120 Beta_126 IndVol_ SHRTURN INTtA NUMBEROFANALYSTS firms RDxopr) (RFLength Volatility Spread Beta IndVolatility ShrTurn Intangibles Analysts Firms RD)
 
 * Determine control variables
-global CONTROLS D_length Sentiment Volatility Spread Beta IndVolatility ShrTurn ROE DtA Current Intangibles BtM RD Analysts Firms LateFiler SRC ICW Big4
+global CONTROLS D_length Sentiment Volatility Spread Beta IndVolatility ShrTurn ROE DtA Current Intangibles BtM RD Analysts Firms LateFiler ICW Big4
 
 * Winsorize 1-99
 winsor2 *IndDisc DVolatility* DSpread* Volatility* Spread* logMC logTA IndVol RFLength DSHRTURN Fwrd_ivol $CONTROLS ActEst* EPSEst*, replace
@@ -107,20 +106,20 @@ egen quartile = cut( IndDisc ), group(4)
 
 
 quietly{
-	reghdfe DVolatility Added Repeated Removed IndDisc $CONTROLS, absorb(fyear Topic_H CIK) vce(cluster CIK)
+	reghdfe DVolatility New Repeated Removed IndDisc $CONTROLS, absorb(ryear Topic_H CIK) vce(cluster CIK)
 	est store M11
 	
-	reghdfe DVolatility Added Repeated Removed IndDisc c.Added#c.IndDisc c.Repeated#c.IndDisc c.Removed#c.IndDisc $CONTROLS, absorb(fyear Topic_H CIK) vce(cluster CIK)
+	reghdfe DVolatility New Repeated Removed IndDisc c.New#c.IndDisc c.Repeated#c.IndDisc c.Removed#c.IndDisc $CONTROLS, absorb(ryear Topic_H CIK) vce(cluster CIK)
 	est store M12
 	
-	reghdfe DSpread Added Repeated Removed IndDisc $CONTROLS, absorb(fyear Topic_H CIK) vce(cluster CIK)
+	reghdfe DSpread New Repeated Removed IndDisc $CONTROLS, absorb(ryear Topic_H CIK) vce(cluster CIK)
 	est store M13
 	
-	reghdfe DSpread Added Repeated Removed IndDisc c.Added#c.IndDisc c.Repeated#c.IndDisc c.Removed#c.IndDisc $CONTROLS, absorb(fyear Topic_H CIK) vce(cluster CIK)
+	reghdfe DSpread New Repeated Removed IndDisc c.New#c.IndDisc c.Repeated#c.IndDisc c.Removed#c.IndDisc $CONTROLS, absorb(ryear Topic_H CIK) vce(cluster CIK)
 	est store M14
 } 
 
-estimates table M1*, star(.1, .05, .01) stats(N r2_a F)
+estimates table M1*, star(.1, .05, .01) stats(N r2_a)
 
 esttab M1* using Empirics\results2_individualRFs3.rtf, nogaps star(* 0.1 ** 0.05 *** 0.01) b(%6.4f) ar2 scalars(N) sfmt(%6.3f) 
 esttab M1* using Empirics\results2_individualRFs3.tex, star(* 0.1 ** 0.05 *** 0.01) b(%6.4f) ar2 scalars(N) sfmt(%6.3f) 

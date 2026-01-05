@@ -180,27 +180,4 @@ esttab R1* using Empirics\results1_Robust1.rtf, drop($CONTROLS) nogaps star(* 0.
 esttab R1* using Empirics\results1_Robust1.tex, drop($CONTROLS) star(* 0.1 ** 0.05 *** 0.01) b(%6.4f) ar2 scalars(N F) sfmt(%6.3f) 
 
 
-* COVID-19 and Financial crisis
-quietly{
-	reghdfe DVolatility stdadd stdrepeat stdremove stdIndAdded stdIndRepeated stdIndRemoved crisis c.stdadd#c.crisis c.stdrepeat#c.crisis c.stdremove#c.crisis c.stdIndAdded#c.crisis c.stdIndRepeated#c.crisis c.stdIndRemoved#c.crisis $CONTROLS if ryear<=2019, absorb(CIK fyear) keepsingletons
-	est store R2VolCris
-	
-	reghdfe DSpread stdadd stdrepeat stdremove stdIndAdded stdIndRepeated stdIndRemoved crisis c.stdadd#c.crisis c.stdrepeat#c.crisis c.stdremove#c.crisis c.stdIndAdded#c.crisis c.stdIndRepeated#c.crisis c.stdIndRemoved#c.crisis $CONTROLS if ryear<=2019, absorb(CIK fyear) keepsingletons
-	est store R2BACris
-	
-	reghdfe DVolatility stdadd stdrepeat stdremove stdIndAdded stdIndRepeated stdIndRemoved covid c.stdadd#c.covid c.stdrepeat#c.covid c.stdremove#c.covid c.stdIndAdded#c.covid c.stdIndRepeated#c.covid c.stdIndRemoved#c.covid $CONTROLS if ryear>=2010, absorb(CIK fyear) keepsingletons
-	est store R2VolCov
-	
-	reghdfe DSpread stdadd stdrepeat stdremove stdIndAdded stdIndRepeated stdIndRemoved covid c.stdadd#c.covid c.stdrepeat#c.covid c.stdremove#c.covid c.stdIndAdded#c.covid c.stdIndRepeated#c.covid c.stdIndRemoved#c.covid $CONTROLS if ryear>=2010, absorb(CIK fyear) keepsingletons
-	est store R2BACov
-}
-
-estimates table R2*, drop($CONTROLS) star(.1, .05, .01) stats(N r2_a)
-
-
-esttab R2* using Empirics\results1_CovidCrisis3.rtf, drop($CONTROLS) nogaps star(* 0.1 ** 0.05 *** 0.01) b(%6.4f) ar2 scalars(N F) sfmt(%6.3f) 
-esttab R2* using Empirics\results1_CovidCrisis3.tex, drop($CONTROLS) star(* 0.1 ** 0.05 *** 0.01) b(%6.4f) ar2 scalars(N F) sfmt(%6.3f) 
-
-
-
 

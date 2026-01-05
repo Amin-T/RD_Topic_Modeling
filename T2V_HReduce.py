@@ -21,6 +21,7 @@ import gc
 
 """
 =============================================================================
+Find and reduce the trained T2V model to the optimal number of topics
 
 To run:
 >>> python T2V_HReduce.py --n_start 10 --n_limit 50 --optimization 1
